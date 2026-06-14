@@ -1,12 +1,14 @@
-import numpy as np
+from sklearn.model_selection import GroupKFold, cross_val_score
 from xgboost import XGBRegressor
 from sklearn.metrics import root_mean_squared_error
-from data.feature_engineering import FeaturePreprocess
+from data.feature_engineering import Feature_preprocess
+
+import numpy as np
 
 class PredictiveModel:
     def __init__(self, data_path, model_params=None):
         self.data_path = data_path
-        self.feature_engineer = FeaturePreprocess(data_path)
+        self.feature_engineer = Feature_preprocess(data_path)
         
         default_params = {
             'n_estimators': 100, 
@@ -20,10 +22,23 @@ class PredictiveModel:
             
         self.model = XGBRegressor(**default_params)
 
-        self.X_train = None
-        self.y_train = None
-        self.X_test = None
-        self.y_test = None
+    def train_cv(self, window=20, threshold=125, n_splits=5):
+        train_df, test_df, act_df = self.feature_engineer.load_data()
+        X_train, y_train, _, _ = self.feature_engineer.test_train_split(train_df, test_df, act_df, threshold=threshold, window=window)
+
+        group=train_df['unit_number']
+        gkf = GroupKFold(n_splits=n_splits)
+        
+        print(f"Performing cross-validation (Window Size: {window}, Target Clip: {threshold})...")
+        cv_scores = cross_val_score(
+            self.model, 
+            X_train, 
+            y_train, 
+            cv=gkf, 
+            groups=group,
+            scoring='neg_root_mean_squared_error')
+        
+        return float(np.mean(-cv_scores))
 
     def train_and_evaluate(self, window=20, threshold=125):
         train_df, test_df, act_df = self.feature_engineer.load_data()
@@ -32,11 +47,6 @@ class PredictiveModel:
             train_df, test_df, act_df, threshold=threshold, window=window
         )
         
-        self.X_train = X_train
-        self.y_train = y_train
-        self.X_test = X_test
-        self.y_test = y_test
-
         print(f"Training XGBRegressor (Window Size: {window}, Target Clip: {threshold})...")
         self.model.fit(X_train, y_train)
         
@@ -45,5 +55,5 @@ class PredictiveModel:
         rmse = root_mean_squared_error(y_test, predictions)
         print(f'Pipeline Complete! Test RMSE: {rmse:.2f} cycles')
         
-        return y_test, predictions
+        return y_test, predictions, rmse
     
