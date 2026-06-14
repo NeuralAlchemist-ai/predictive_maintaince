@@ -10,9 +10,9 @@ class Feature_preprocess:
                         's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21'
                         ]
     def load_data(self):
-        train_df = pd.read_csv(self.data_path + "/train_FD001.txt", delim_whitespace=True, header=None, names=self.columns)
-        test_df = pd.read_csv(self.data_path + "/test_FD001.txt", delim_whitespace=True, header=None, names=self.columns)
-        act_df = pd.read_csv(self.data_path + "/RUL_FD001.txt", delim_whitespace=True, header=None)
+        train_df = pd.read_csv(self.data_path + "/train_FD001.txt", sep='\s+', header=None, names=self.columns)
+        test_df = pd.read_csv(self.data_path + "/test_FD001.txt", sep='\s+', header=None, names=self.columns)
+        act_df = pd.read_csv(self.data_path + "/RUL_FD001.txt", sep='\s+', header=None)
         return train_df, test_df, act_df
 
     def calculate_rul(self, df, threshold):
