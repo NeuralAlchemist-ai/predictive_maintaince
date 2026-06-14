@@ -1,1 +1,2 @@
-DATA_PATH='./dataset'
+DATA_PATH='./datasets/'
+URL='http://localhost:8080'
