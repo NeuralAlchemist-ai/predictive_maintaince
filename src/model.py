@@ -6,15 +6,17 @@ from data.feature_engineering import Feature_preprocess
 import numpy as np
 
 class PredictiveModel:
-    def __init__(self, data_path, model_params=None):
-        self.data_path = data_path
-        self.feature_engineer = Feature_preprocess(data_path)
+    def __init__(self, config, model_params=None):
+        self.config = config
+        self.data_path = config.data_path
+        self.feature_engineer = Feature_preprocess(self.config)
+        self.RANDOM_STATE = config.random_state
         
         default_params = {
             'n_estimators': 100, 
             'learning_rate': 0.05,
             'max_depth': 5, 
-            'random_state': 42,
+            'random_state': self.RANDOM_STATE,
             'n_jobs': -1
         }
         if model_params:
