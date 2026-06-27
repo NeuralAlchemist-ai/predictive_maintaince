@@ -1,61 +1,65 @@
 from sklearn.model_selection import GroupKFold, cross_val_score
-from xgboost import XGBRegressor
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import root_mean_squared_error
-from data.feature_engineering import Feature_preprocess
+from xgboost import XGBRegressor
+from data.feature_engineering import RegimeBasedScaler, TimeSeriesFeatureGenerator, FeatureSelector
 
 import numpy as np
+
 
 class PredictiveModel:
     def __init__(self, config, model_params=None):
         self.config = config
-        self.data_path = config.data_path
-        self.feature_engineer = Feature_preprocess(self.config)
-        self.RANDOM_STATE = config.random_state
-        
+
         default_params = {
-            'n_estimators': 100, 
+            'n_estimators': 100,
             'learning_rate': 0.05,
-            'max_depth': 5, 
-            'random_state': self.RANDOM_STATE,
-            'n_jobs': -1
+            'max_depth': 5,
+            'random_state': config.random_state,
+            'n_jobs': -1,
         }
         if model_params:
             default_params.update(model_params)
-            
+
         self.model = XGBRegressor(**default_params)
 
-    def train_cv(self, window=20, threshold=125, n_splits=5):
-        train_df, test_df, act_df = self.feature_engineer.load_data()
-        X_train, y_train, _, _ = self.feature_engineer.test_train_split(train_df, test_df, act_df, threshold=threshold, window=window)
+        self.pipeline = Pipeline([
+            ('timeseries', TimeSeriesFeatureGenerator(config, window=20)),
+            ('scaler', RegimeBasedScaler(config)),
+            ('selector', FeatureSelector()),
+            ('model', self.model),
+        ])
 
-        group=train_df['unit_number']
+    def train_cv(self, X_train, y_train, window=20, n_splits=5):
+       
+        self.pipeline.set_params(timeseries__window=window)
+
+        groups = X_train['unit_number']
         gkf = GroupKFold(n_splits=n_splits)
-        
-        print(f"Performing cross-validation (Window Size: {window}, Target Clip: {threshold})...")
+
         cv_scores = cross_val_score(
-            self.model, 
-            X_train, 
-            y_train, 
-            cv=gkf, 
-            groups=group,
-            scoring='neg_root_mean_squared_error')
-        
+            self.pipeline,
+            X_train,
+            y_train,
+            cv=gkf,
+            groups=groups,
+            scoring='neg_root_mean_squared_error',
+        )
+
         return float(np.mean(-cv_scores))
 
-    def train_and_evaluate(self, window=20, threshold=125):
-        train_df, test_df, act_df = self.feature_engineer.load_data()
+    def train_and_evaluate(self, X_train, y_train, X_test, y_test, window=20):
         
-        X_train, y_train, X_test, y_test = self.feature_engineer.test_train_split(
-            train_df, test_df, act_df, threshold=threshold, window=window
-        )
+        self.pipeline.set_params(timeseries__window=window)
+        self.pipeline.fit(X_train, y_train)
+
+        last_cycle_mask = X_test.groupby('unit_number').cumcount(ascending=False) == 0
+
+        all_predictions = self.pipeline.predict(X_test)
+
+        y_pred = all_predictions[last_cycle_mask]
         
-        print(f"Training XGBRegressor (Window Size: {window}, Target Clip: {threshold})...")
-        self.model.fit(X_train, y_train)
-        
-        predictions = self.model.predict(X_test)
-        
-        rmse = root_mean_squared_error(y_test, predictions)
+        rmse = root_mean_squared_error(y_test, y_pred)
         print(f'Pipeline Complete! Test RMSE: {rmse:.2f} cycles')
-        
-        return y_test, predictions, rmse
-    
+
+        return y_test, y_pred, rmse
